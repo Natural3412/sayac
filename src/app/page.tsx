@@ -5,9 +5,9 @@ import { useState, useEffect } from 'react';
 // Type tanımları
 type DailyPhotoProps = {
   date: Date;
-  onNewPhotoAvailable: (isNew: boolean) => void; // Yeni fotoğrafın kullanılabilir olduğunu bildirir
-  isOpen: boolean; // DailyPhoto'nun açık olup olmadığını belirtir
-  setIsOpen: (isOpen: boolean) => void; // DailyPhoto'nun açık durumunu değiştirmek için
+  onNewPhotoAvailable: (isNew: boolean, photoId: number) => void;
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
 };
 
 type Star = {
@@ -27,91 +27,261 @@ type PlayerScores = {
   sevilay: number;
 };
 
-// Bu fonksiyon, sürekli rastgele aralıklarla fotoğraf değiştirir
-function getRandomPhotoName(date: Date, photoFormat: string = 'jpeg'): { photoSrc: string; intervalId: number } {
-  const startTime = new Date('2025-09-02T00:00:00').getTime();
+// Bu fonksiyon, fotoğrafları sırayla değiştirir (47'den 1'e kadar geriye doğru)
+// ZAMAN DÜZENLEMESİ: intervalDuration ve başlangıç tarihini değiştirip istediğin süreleri ayarlayabilirsin
+function getSequentialPhotoName(date: Date, photoFormat: string = 'jpeg'): { photoSrc: string; intervalId: number } {
+  // BAŞLANGIÇ TARİHİ: TAM ŞU ANDAN başlar  
+  // Terminal başlatıldığında şu anki zamandan başlasın
+  const now = new Date();
+  const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()).getTime();
   const currentTime = date.getTime();
   
-  let totalMinutes = Math.floor((currentTime - startTime) / (1000 * 60));
-  let currentInterval = 0;
-  let accumulatedMinutes = 0;
+  // Eğer başlangıç zamanına henüz gelmediyse, ilk fotoğrafı göster
+  if (currentTime < startTime) {
+    console.log('Henüz başlangıç zamanına gelmedi, ilk fotoğraf gösteriliyor: Photo 47');
+    return {
+      photoSrc: `/love-photos/love_47.${photoFormat}`,
+      intervalId: 0
+    };
+  }
   
-  while (true) {
-    const intervalSeed = `change-${currentInterval}`;
-    let hash = 0;
-    for (let i = 0; i < intervalSeed.length; i++) {
-      hash = ((hash << 5) - hash) + intervalSeed.charCodeAt(i);
-      hash = hash & hash;
+  // Toplam geçen dakika sayısını hesapla (şu andan itibaren)
+  const totalMinutes = Math.floor((currentTime - startTime) / (1000 * 60));
+  
+  // Her fotoğraf için önceden belirlenmiş süreler (1-2 dakika arası)
+  // Her interval için farklı süre ama aynı interval'da hep aynı süre
+  let accumulatedMinutes = 0;
+  let currentInterval = 0;
+  
+  while (accumulatedMinutes <= totalMinutes) {
+    // Bu interval için süre (60-240 dakika arası = 1-4 saat arası)
+    const seed = currentInterval * 1234567; // Sabit seed
+    const randomValue = Math.abs(Math.sin(seed)) * 1000000;
+    const intervalDuration = 60 + Math.floor((randomValue % 1000) * 180 / 1000); // 60-240 dakika arası
+    
+    if (accumulatedMinutes + intervalDuration > totalMinutes) {
+      break; // Şu anki interval'dayız
     }
     
-    const intervalDuration = 30 + (Math.abs(hash) % 331);
-    const intervalEnd = accumulatedMinutes + intervalDuration;
-    
-    if (totalMinutes < intervalEnd) {
-      const photoHash = hash * 17;
-      const photoCount = 9;
-      const photoIndex = Math.abs(photoHash % photoCount) + 1;
-      
-      const remainingMinutes = intervalEnd - totalMinutes;
-      const remainingHours = Math.floor(remainingMinutes / 60);
-      const remainingMins = remainingMinutes % 60;
-      
-      console.log(`Interval ${currentInterval}: Photo ${photoIndex}, Next change in: ${remainingHours}h ${remainingMins}m`);
-      
-      return {
-        photoSrc: `/love-photos/love_${photoIndex}.${photoFormat}`,
-        intervalId: currentInterval
-      };
-    }
-    
-    accumulatedMinutes = intervalEnd;
+    accumulatedMinutes += intervalDuration;
     currentInterval++;
   }
+  
+  // FOTO SIRASI: Basit array ile 47'den 1'e sıralı
+  const photoSequence = [47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  const finalPhotoIndex = photoSequence[currentInterval % photoSequence.length];
+  
+  // Bir sonraki fotoğrafa kaç dakika kaldı
+  const seed = currentInterval * 1234567;
+  const randomValue = Math.abs(Math.sin(seed)) * 1000000;
+  const currentIntervalDuration = 60 + Math.floor((randomValue % 1000) * 180 / 1000); // 60-240 dakika
+  const nextChangeMinutes = accumulatedMinutes + currentIntervalDuration - totalMinutes;
+  const nextChangeHours = Math.floor(nextChangeMinutes / 60);
+  const nextChangeMins = nextChangeMinutes % 60;
+  
+  console.log(`Interval ${currentInterval}: Photo ${finalPhotoIndex} (47→1 sıralı), Next change in: ${nextChangeHours}h ${nextChangeMins}m (total: ${nextChangeMinutes} minutes)`);
+  
+  return {
+    photoSrc: `/love-photos/love_${finalPhotoIndex}.${photoFormat}`,
+    intervalId: currentInterval
+  };
 }
 
-// Skor sistemi
-function useScoreSystem() {
+// Gerçek zamanlı skor sistemi
+function useServerScoreSystem() {
   const [scores, setScores] = useState<PlayerScores>({ okan: 0, sevilay: 0 });
-  
-  const addScore = (player: 'okan' | 'sevilay', points: number) => {
-    setScores(prev => ({
-      ...prev,
-      [player]: prev[player] + points
-    }));
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [usedPhotos, setUsedPhotos] = useState<number[]>([]); // Kullanılmış fotoğraf ID'leri
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [gameEnded, setGameEnded] = useState(false);
+  const [winner, setWinner] = useState<string | null>(null);
+
+  // Fotoğrafın kullanılıp kullanılmadığını kontrol et
+  const isPhotoUsed = (photoId: number): boolean => {
+    return usedPhotos.includes(photoId);
   };
+
+  // Skoru güncelle (sadece yeni fotoğraflar için)
+  const addScore = async (player: 'okan' | 'sevilay', points: number, photoId: number) => {
+    if (isPhotoUsed(photoId)) {
+      console.log('Bu fotoğraftan zaten puan alındı!');
+      return false;
+    }
+
+    const newScores = {
+      ...scores,
+      [player]: scores[player] + points
+    };
+    
+    const newUsedPhotos = [...usedPhotos, photoId];
+    
+    // Optimistic update - hemen UI'yi güncelle
+    setScores(newScores);
+    setUsedPhotos(newUsedPhotos);
+    
+    // Sunucuya kaydet - SSE otomatik olarak diğer istemcileri güncelleyecek
+    try {
+      await fetch('/api/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newScores,
+          usedPhotos: newUsedPhotos
+        })
+      });
+      return true;
+    } catch (error) {
+      console.log('Skor kaydedilemedi:', error);
+      // Hata durumunda geri al
+      setScores(scores);
+      setUsedPhotos(usedPhotos);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: NodeJS.Timeout;
+
+    const connectSSE = () => {
+      setConnectionStatus('connecting');
+      eventSource = new EventSource('/api/scores-sse');
+
+      eventSource.onopen = () => {
+        console.log('SSE bağlantısı kuruldu');
+        setConnectionStatus('connected');
+        setIsLoaded(true);
+        setIsLoading(false);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setScores({ okan: data.okan || 0, sevilay: data.sevilay || 0 });
+          setUsedPhotos(data.usedPhotos || []);
+          setGameEnded(data.gameEnded || false);
+          setWinner(data.winner || null);
+        } catch (error) {
+          console.error('SSE veri parse hatası:', error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.log('SSE bağlantı hatası:', error);
+        setConnectionStatus('disconnected');
+        eventSource?.close();
+        
+        // 3 saniye sonra yeniden bağlan
+        reconnectTimer = setTimeout(connectSSE, 3000);
+      };
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+    };
+  }, []);
+
+  return { scores, addScore, isLoaded, isLoading, isPhotoUsed, connectionStatus, gameEnded, winner };
+}
+
+// Kazanan Ekranı
+function WinnerScreen({ winner, scores }: { winner: string | null, scores: PlayerScores }) {
+  if (!winner) return null;
   
-  return { scores, addScore };
+  const isOkan = winner === 'Okan';
+  const isDraw = winner === 'Berabere';
+  
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-gradient-to-br from-black/80 via-purple-900/80 to-pink-900/80 backdrop-blur-xl">
+      <div className="text-center max-w-2xl mx-4">
+        <div className={`text-8xl mb-8 animate-bounce ${isDraw ? 'text-yellow-400' : isOkan ? 'text-blue-400' : 'text-purple-400'}`}>
+          🏆
+        </div>
+        
+        <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-pink-200 via-rose-300 to-pink-400 bg-clip-text text-transparent">
+          TEBRİKLER!
+        </h1>
+        
+        <h2 className={`text-5xl font-bold mb-8 ${isDraw ? 'text-yellow-300' : isOkan ? 'text-blue-300' : 'text-purple-300'}`}>
+          {isDraw ? '🤝 BERABERE! 🤝' : `${winner} Kazandı!`}
+        </h2>
+        
+        <div className="flex justify-center gap-12 mb-8">
+          <div className="text-center">
+            <div className="text-3xl font-bold text-blue-300 mb-2">Okan</div>
+            <div className="text-5xl font-bold text-white bg-blue-900/50 rounded-full w-24 h-24 flex items-center justify-center">
+              {scores.okan}
+            </div>
+          </div>
+          
+          <div className="text-6xl text-pink-300 flex items-center">
+            ♥
+          </div>
+          
+          <div className="text-center">
+            <div className="text-3xl font-bold text-purple-300 mb-2">Sevilay</div>
+            <div className="text-5xl font-bold text-white bg-purple-900/50 rounded-full w-24 h-24 flex items-center justify-center">
+              {scores.sevilay}
+            </div>
+          </div>
+        </div>
+        
+        <p className="text-2xl text-white/90 mb-4">
+          10 günlük aşk yarışması sona erdi! 
+        </p>
+        
+        <p className="text-xl text-pink-300">
+          {isDraw ? 
+            'İkiniz de eşit sevgi gösterdiniz! ❤️' : 
+            `${winner} daha çok sevgi topladı! 🎉`
+          }
+        </p>
+        
+        <div className="mt-8 text-lg text-white/70">
+          Bu sayfa sonsuza kadar böyle kalacak... 💕
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Oyun butonları
-function GameButtons({ onPlayerClick, isVisible }: { 
+function GameButtons({ onPlayerClick, isVisible, isPhotoUsed }: { 
   onPlayerClick: (player: 'okan' | 'sevilay') => void;
-  isVisible: boolean; 
+  isVisible: boolean;
+  isPhotoUsed: boolean;
 }) {
-  if (!isVisible) return null;
+  // Eğer puan alınmışsa veya görünür olmaması gerekiyorsa butonları gizle
+  if (!isVisible || isPhotoUsed) return null;
   
   return (
     <>
-      {/* Sol buton - Okan */}
       <button
         onClick={() => onPlayerClick('okan')}
-        className="fixed left-4 top-1/2 transform -translate-y-1/2 z-50
+        className="fixed left-4 top-1/2 transform -translate-y-1/2 z-[60]
                       bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800
                       text-white font-bold text-4xl w-16 h-16 rounded-full
                       shadow-2xl hover:shadow-blue-500/50 transition-all duration-300
-                      animate-pulse hover:scale-110"
+                      animate-pulse hover:scale-110 border-2 border-white/30"
       >
         O
       </button>
       
-      {/* Sağ buton - Sevilay */}
       <button
         onClick={() => onPlayerClick('sevilay')}
-        className="fixed right-4 top-1/2 transform -translate-y-1/2 z-50
+        className="fixed right-4 top-1/2 transform -translate-y-1/2 z-[60]
                       bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800
                       text-white font-bold text-4xl w-16 h-16 rounded-full
                       shadow-2xl hover:shadow-purple-500/50 transition-all duration-300
-                      animate-pulse hover:scale-110"
+                      animate-pulse hover:scale-110 border-2 border-white/30"
       >
         S
       </button>
@@ -129,10 +299,12 @@ function CelebrationMessage({ player, points }: {
   const isOkan = player === 'okan';
   const name = isOkan ? 'Okan' : 'Sevilay';
   const color = isOkan ? 'text-blue-400' : 'text-purple-400';
+  const bgColor = isOkan ? 'bg-blue-900/80' : 'bg-purple-900/80';
   
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center pointer-events-none">
-      <div className={`${color} text-6xl font-bold animate-bounce drop-shadow-lg`}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+      <div className={`${color} ${bgColor} text-6xl font-bold animate-bounce drop-shadow-2xl 
+                      backdrop-blur-sm rounded-2xl px-8 py-4 border-2 border-white/20 shadow-2xl`}>
         {name} +{points} puan!
       </div>
     </div>
@@ -143,23 +315,15 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
   const [currentPhoto, setCurrentPhoto] = useState({ photoSrc: '', intervalId: -1 });
   
   useEffect(() => {
-    const newPhoto = getRandomPhotoName(date);
+    const newPhoto = getSequentialPhotoName(date);
     const isNewPhoto = newPhoto.intervalId !== currentPhoto.intervalId;
     
     if (isNewPhoto) {
       setCurrentPhoto(newPhoto);
-      // Yeni bir fotoğraf geldiğinde ana bileşene bildir
-      onNewPhotoAvailable(true); 
+      // Fotoğraf ID'sini de gönder (interval ID'yi fotoğraf ID'si olarak kullan)
+      onNewPhotoAvailable(true, newPhoto.intervalId); 
     }
   }, [date, onNewPhotoAvailable, currentPhoto.intervalId]);
-
-  const handleOpenModal = () => {
-    setIsOpen(true);
-  }
-
-  const handleCloseModal = () => {
-    setIsOpen(false);
-  }
 
   return (
     <>
@@ -171,7 +335,7 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
           focus:outline-none focus:ring-4 focus:ring-rose-400/50
           border border-rose-400/30 backdrop-blur-sm
         "
-        onClick={handleOpenModal}
+        onClick={() => setIsOpen(true)}
       >
         <span className="flex items-center gap-3">
           <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -185,7 +349,7 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div 
             className="fixed inset-0 bg-gradient-to-br from-black/80 via-purple-900/50 to-pink-900/50 backdrop-blur-xl"
-            onClick={handleCloseModal}
+            onClick={() => setIsOpen(false)}
           ></div>
           
           <div className="relative bg-gradient-to-br from-white/20 via-pink-100/20 to-rose-100/20 
@@ -200,7 +364,7 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
                           transition-all duration-300 transform hover:rotate-90 hover:scale-110
                           focus:outline-none border border-white/20 backdrop-blur-sm
                           shadow-lg hover:shadow-xl"
-              onClick={handleCloseModal}
+              onClick={() => setIsOpen(false)}
             >
               <svg width={24} height={24} fill="none" stroke="currentColor" strokeWidth={2} className="text-white">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -240,7 +404,6 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
   );
 }
 
-// Düzgün yıldız simgesi için SVG bileşeni
 function PerfectStar({ size, className, style }: { size: number; className?: string; style?: React.CSSProperties }) {
   return (
     <svg
@@ -271,20 +434,60 @@ function RotatingTimeStar({ size }: { size: number }) {
   );
 }
 
-// Skor tablosu
-function ScoreBoard({ scores }: { scores: PlayerScores }) {
-  return (
-    <div className="mb-8 flex justify-center gap-8">
-      <div className="bg-gradient-to-r from-blue-500/30 to-blue-600/30 
-                      backdrop-blur-lg rounded-2xl px-6 py-4 border border-blue-300/40 shadow-xl">
-        <h3 className="text-xl font-bold text-white mb-2 text-center">Okancan</h3>
-        <div className="text-3xl font-bold text-blue-300 text-center">{scores.okan}</div>
+function ScoreBoard({ scores, isLoaded, isLoading, connectionStatus }: { 
+  scores: PlayerScores; 
+  isLoaded: boolean;
+  isLoading: boolean;
+  connectionStatus: 'connecting' | 'connected' | 'disconnected';
+}) {
+  if (!isLoaded) {
+    return (
+      <div className="mb-8 flex justify-center gap-8">
+        <div className="animate-pulse bg-gray-300/20 rounded-2xl px-6 py-4 w-32 h-20"></div>
+        <div className="animate-pulse bg-gray-300/20 rounded-2xl px-6 py-4 w-32 h-20"></div>
       </div>
-      
-      <div className="bg-gradient-to-r from-purple-500/30 to-purple-600/30 
-                      backdrop-blur-lg rounded-2xl px-6 py-4 border border-purple-300/40 shadow-xl">
-        <h3 className="text-xl font-bold text-white mb-2 text-center">Sevilay</h3>
-        <div className="text-3xl font-bold text-purple-300 text-center">{scores.sevilay}</div>
+    );
+  }
+
+  const getConnectionIndicator = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Gerçek zamanlı bağlantı aktif"></div>;
+      case 'connecting':
+        return <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" title="Bağlanıyor..."></div>;
+      case 'disconnected':
+        return <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" title="Bağlantı kesildi"></div>;
+    }
+  };
+
+  return (
+    <div className="mb-8">
+      {/* Bağlantı durumu */}
+      <div className="flex justify-center mb-4">
+        <div className="flex items-center gap-2 bg-black/20 backdrop-blur-sm rounded-full px-3 py-1 border border-white/20">
+          {getConnectionIndicator()}
+           
+        </div>
+      </div>
+
+      <div className="flex justify-center gap-8">
+        <div className="bg-gradient-to-r from-blue-500/30 to-blue-600/30 
+                        backdrop-blur-lg rounded-2xl px-6 py-4 border border-blue-300/40 shadow-xl relative">
+          <h3 className="text-xl font-bold text-white mb-2 text-center">Okancan</h3>
+          <div className="text-3xl font-bold text-blue-300 text-center">{scores.okan}</div>
+          {isLoading && (
+            <div className="absolute top-2 right-2 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+          )}
+        </div>
+        
+        <div className="bg-gradient-to-r from-purple-500/30 to-purple-600/30 
+                        backdrop-blur-lg rounded-2xl px-6 py-4 border border-purple-300/40 shadow-xl relative">
+          <h3 className="text-xl font-bold text-white mb-2 text-center">Sevilay</h3>
+          <div className="text-3xl font-bold text-purple-300 text-center">{scores.sevilay}</div>
+          {isLoading && (
+            <div className="absolute top-2 right-2 w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -300,34 +503,62 @@ export default function CountdownPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [stars, setStars] = useState<Star[]>([]);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
-  const [isGameEnabled, setIsGameEnabled] = useState(false); // Yeni fotoğraf geldiğinde true olur
+  const [isGameEnabled, setIsGameEnabled] = useState(false);
 
   const [celebrationPlayer, setCelebrationPlayer] = useState<'okan' | 'sevilay' | null>(null);
   const [celebrationPoints, setCelebrationPoints] = useState(0);
-  const { scores, addScore } = useScoreSystem();
+  const [currentPhotoId, setCurrentPhotoId] = useState<number>(0);
+  const { scores, addScore, isLoaded, isLoading, isPhotoUsed, connectionStatus, gameEnded, winner } = useServerScoreSystem();
 
-  // Yeni fotoğraf mevcut olduğunda oyunu etkinleştirir
-  const handleNewPhotoAvailable = (isNew: boolean) => {
-    if (isNew) {
+  const handleNewPhotoAvailable = (isNew: boolean, photoId: number) => {
+    // Her zaman mevcut fotoğraf ID'sini güncelle
+    setCurrentPhotoId(photoId);
+    
+    // Sayfa yenilenmesi veya yeni fotoğraf - her durumda kontrol et
+    if (!isPhotoUsed(photoId)) {
       setIsGameEnabled(true);
+      console.log(`Fotoğraf ${photoId} - Butonlar aktif! (Yeni: ${isNew})`);
+    } else {
+      console.log(`Fotoğraf ${photoId} daha önce kullanıldı, butonlar gözükmeyecek`);
+      setIsGameEnabled(false);
     }
   };
 
-  const handlePlayerClick = (player: 'okan' | 'sevilay') => {
+  const handlePlayerClick = async (player: 'okan' | 'sevilay') => {
+    // Fotoğraf daha önce kullanıldıysa puan verme
+    if (isPhotoUsed(currentPhotoId)) {
+      console.log('Bu fotoğraftan zaten puan alındı!');
+      setIsGameEnabled(false);
+      return;
+    }
+
+    // HEMEN butonları kapat - tekrar tıklanamaz
+    setIsGameEnabled(false);
+
     const currentHour = currentDate.getHours();
     const isBonusTime = currentHour >= 15 && currentHour < 19;
     const points = isBonusTime ? 10 : 5;
     
-    addScore(player, points);
+    // HEMEN bildirim göster (fotoğrafı kapatmayı beklemeden)
     setCelebrationPlayer(player);
     setCelebrationPoints(points);
-    setIsGameEnabled(false); // Puan alındı, oyunu devre dışı bırak
-
-    setTimeout(() => {
+    console.log(`${player} oyuncusu ${points} puan aldı! Butonlar kapandı.`);
+    
+    const success = await addScore(player, points, currentPhotoId);
+    
+    if (success) {
+      // Bildirim zaten gösterildi, sadece timer başlat
+      // PUAN BİLDİRİMİ SÜRESİ: 1500ms = 1.5 saniye (önceki sürenin yarısı)
+      setTimeout(() => {
+        setCelebrationPlayer(null);
+        setCelebrationPoints(0);
+      }, 1500);
+    } else {
+      console.log('Puan eklenemedi veya bu fotoğraftan zaten puan alındı');
+      // Başarısızsa bildirimi kaldır
       setCelebrationPlayer(null);
       setCelebrationPoints(0);
-      setIsPhotoModalOpen(false); // Modalı kapat
-    }, 3000);
+    }
   };
 
   useEffect(() => {
@@ -372,6 +603,11 @@ export default function CountdownPage() {
     
     return () => clearInterval(timer);
   }, []);
+
+  // Oyun bittiyse kazanan ekranını göster
+  if (gameEnded) {
+    return <WinnerScreen winner={winner} scores={scores} />;
+  }
 
   return (
     <div className="min-h-screen relative font-sans antialiased overflow-hidden">
@@ -488,13 +724,12 @@ export default function CountdownPage() {
         ))}
       </div>
       
-      {/* Oyun butonları */}
       <GameButtons 
         onPlayerClick={handlePlayerClick} 
-        isVisible={isPhotoModalOpen && isGameEnabled} // Modal açıkken ve oyun etkinse göster
+        isVisible={isPhotoModalOpen && isGameEnabled}
+        isPhotoUsed={isPhotoUsed(currentPhotoId)}
       />
       
-      {/* Tebrik mesajı */}
       <CelebrationMessage player={celebrationPlayer} points={celebrationPoints} />
 
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 py-8">
@@ -527,8 +762,12 @@ export default function CountdownPage() {
           </h2>
         </div>
 
-        {/* Skor tablosu */}
-        <ScoreBoard scores={scores} />
+        <ScoreBoard 
+          scores={scores} 
+          isLoaded={isLoaded}
+          isLoading={isLoading}
+          connectionStatus={connectionStatus}
+        />
 
         <div className="relative mb-10 w-full max-w-4xl">
           <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
@@ -574,42 +813,16 @@ export default function CountdownPage() {
           </div>
         </div>
 
-        <div className="mb-8">
-          <DailyPhoto 
-            date={currentDate} 
-            onNewPhotoAvailable={handleNewPhotoAvailable} 
-            isOpen={isPhotoModalOpen} 
-            setIsOpen={setIsPhotoModalOpen} 
-          />
-        </div>
+        <DailyPhoto 
+          date={currentDate} 
+          onNewPhotoAvailable={handleNewPhotoAvailable}
+          isOpen={isPhotoModalOpen}
+          setIsOpen={setIsPhotoModalOpen}
+        />
 
-        <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-10 mb-6">
-          <div className="bg-gradient-to-r from-pink-500/25 via-rose-500/25 to-pink-500/25 
-                          backdrop-blur-lg rounded-2xl px-8 py-5 
-                          border border-pink-300/40 shadow-2xl relative
-                          hover:shadow-pink-500/30 transition-all duration-500">
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-2 flex items-center gap-3">
-              <span className="animate-gentle-pulse text-pink-300">♥</span>
-              15 Eylül 2025
-              <span className="animate-gentle-pulse delay-1000 text-pink-300">♥</span>
-            </h3>
-            <p className="text-white/90 text-base text-center">
-              4. SEZON BAŞLASINNN! 🎉
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <p className="text-white/70 text-base flex items-center justify-center gap-3">
-            <PerfectStar size={14} className="text-pink-300" style={{
-              animation: 'spin-clockwise 3s linear infinite'
-            }} />
-            <span>Her saniye seninle daha güzel... ⭐</span>
-            <PerfectStar size={14} className="text-pink-300" style={{
-              animation: 'spin-clockwise 3s linear infinite',
-              animationDelay: '1s'
-            }} />
-          </p>
+        <div className="mt-auto text-center text-white/70 text-sm md:text-base">
+          <p>© 2025 Okan & Sevilay. Tüm hakları saklıdır.</p>
+          <p>Bu sayfa, sevgi ve özenle hazırlandı. ❤️</p>
         </div>
       </div>
     </div>
