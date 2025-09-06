@@ -36,18 +36,19 @@ export default function DailyLoveBox() {
           </div>
           
           {/* Photo Section */}
-          <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/30">
-            {/* Photo placeholder */}
-            <div className="text-2xl">💕</div>
-            {/* When you add photos:
-            <Image 
+          <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/30 overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
               src={`/love-photos/${todayMessage.imageFile}`}
               alt="Daily love photo"
               width={64}
               height={64}
-              className="rounded-lg object-cover"
+              className="rounded-lg object-cover w-full h-full"
+              onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                const img = e.target as HTMLImageElement;
+                img.innerHTML = '💕';
+              }}
             />
-            */}
           </div>
         </div>
 
