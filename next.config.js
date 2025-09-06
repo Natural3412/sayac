@@ -1,5 +1,4 @@
 const nextConfig = {
-  outputFileTracingRoot: __dirname,
   /* config options here */
 };
 
