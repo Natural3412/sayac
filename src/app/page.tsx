@@ -27,63 +27,47 @@ type PlayerScores = {
   sevilay: number;
 };
 
-// Bu fonksiyon, fotoğrafları sırayla değiştirir (47'den 1'e kadar geriye doğru)
-// ZAMAN DÜZENLEMESİ: intervalDuration ve başlangıç tarihini değiştirip istediğin süreleri ayarlayabilirsin
+// Sıralı fotoğraf değişimi: 46→45→44→...→2→1→47→46→45... (1-3 saat arası)
 function getSequentialPhotoName(date: Date, photoFormat: string = 'jpeg'): { photoSrc: string; intervalId: number } {
-  // BAŞLANGIÇ TARİHİ: TAM ŞU ANDAN başlar  
-  // Terminal başlatıldığında şu anki zamandan başlasın
-  const now = new Date();
-  const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes()).getTime();
+  const startTime = new Date('2025-01-01').getTime(); // Sabit başlangıç
   const currentTime = date.getTime();
+  const elapsedMinutes = Math.floor((currentTime - startTime) / (1000 * 60));
   
-  // Eğer başlangıç zamanına henüz gelmediyse, ilk fotoğrafı göster
-  if (currentTime < startTime) {
-    console.log('Henüz başlangıç zamanına gelmedi, ilk fotoğraf gösteriliyor: Photo 47');
-    return {
-      photoSrc: `/love-photos/love_47.${photoFormat}`,
-      intervalId: 0
-    };
-  }
-  
-  // Toplam geçen dakika sayısını hesapla (şu andan itibaren)
-  const totalMinutes = Math.floor((currentTime - startTime) / (1000 * 60));
-  
-  // Her fotoğraf için önceden belirlenmiş süreler (1-2 dakika arası)
-  // Her interval için farklı süre ama aynı interval'da hep aynı süre
-  let accumulatedMinutes = 0;
-  let currentInterval = 0;
-  
-  while (accumulatedMinutes <= totalMinutes) {
-    // Bu interval için süre (60-240 dakika arası = 1-4 saat arası)
-    const seed = currentInterval * 1234567; // Sabit seed
+  // 1-3 saat arası rastgele süre (60-180 dakika)
+  const getIntervalDuration = (intervalIndex: number): number => {
+    const seed = intervalIndex * 1234567;
     const randomValue = Math.abs(Math.sin(seed)) * 1000000;
-    const intervalDuration = 60 + Math.floor((randomValue % 1000) * 180 / 1000); // 60-240 dakika arası
-    
-    if (accumulatedMinutes + intervalDuration > totalMinutes) {
-      break; // Şu anki interval'dayız
+    return 60 + Math.floor((randomValue % 1000) * 120 / 1000); // 60-180 dakika
+  };
+  
+  // Hangi interval'dayız?
+  let totalMinutes = 0;
+  let intervalId = 0;
+  
+  while (totalMinutes <= elapsedMinutes) {
+    const intervalDuration = getIntervalDuration(intervalId);
+    if (totalMinutes + intervalDuration > elapsedMinutes) {
+      break; // Bu interval'dayız
     }
-    
-    accumulatedMinutes += intervalDuration;
-    currentInterval++;
+    totalMinutes += intervalDuration;
+    intervalId++;
   }
   
-  // FOTO SIRASI: Basit array ile 47'den 1'e sıralı
-  const photoSequence = [47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
-  const finalPhotoIndex = photoSequence[currentInterval % photoSequence.length];
+  // Fotoğraf sırası: 46→45→44→...→2→1→47→46→45... (47 fotoğraf var)
+  const photoSequence = [46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 47];
+  const photoIndex = photoSequence[intervalId % photoSequence.length];
   
-  // Bir sonraki fotoğrafa kaç dakika kaldı
-  const seed = currentInterval * 1234567;
-  const randomValue = Math.abs(Math.sin(seed)) * 1000000;
-  const currentIntervalDuration = 60 + Math.floor((randomValue % 1000) * 180 / 1000); // 60-240 dakika
-  const nextChangeMinutes = accumulatedMinutes + currentIntervalDuration - totalMinutes;
+  // Bir sonraki değişime kaç dakika kaldı
+  const currentIntervalDuration = getIntervalDuration(intervalId);
+  const nextChangeMinutes = totalMinutes + currentIntervalDuration - elapsedMinutes;
   const nextChangeHours = Math.floor(nextChangeMinutes / 60);
   const nextChangeMins = nextChangeMinutes % 60;
   
-  console.log(`Interval ${currentInterval}: Photo ${finalPhotoIndex} (47→1 sıralı), Next change in: ${nextChangeHours}h ${nextChangeMins}m (total: ${nextChangeMinutes} minutes)`);
+  console.log(`Interval: ${intervalId}, Foto: ${photoIndex}, Sonraki değişim: ${nextChangeHours}s ${nextChangeMins}dk`);
   
   return {
-    photoSrc: `/love-photos/love_${finalPhotoIndex}.${photoFormat}`,
-    intervalId: currentInterval
+    photoSrc: `/love-photos/love_${photoIndex}.${photoFormat}`,
+    intervalId: intervalId
   };
 }
 
@@ -315,15 +299,31 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
   const [currentPhoto, setCurrentPhoto] = useState({ photoSrc: '', intervalId: -1 });
   
   useEffect(() => {
+    // İlk yüklemede fotoğrafı belirle
     const newPhoto = getSequentialPhotoName(date);
     const isNewPhoto = newPhoto.intervalId !== currentPhoto.intervalId;
     
     if (isNewPhoto) {
       setCurrentPhoto(newPhoto);
-      // Fotoğraf ID'sini de gönder (interval ID'yi fotoğraf ID'si olarak kullan)
       onNewPhotoAvailable(true, newPhoto.intervalId); 
     }
   }, [date, onNewPhotoAvailable, currentPhoto.intervalId]);
+
+  useEffect(() => {
+    // Her 30 saniyede fotoğraf kontrolü yap
+    const checkPhotoInterval = setInterval(() => {
+      const newDate = new Date();
+      const newPhoto = getSequentialPhotoName(newDate);
+      
+      if (newPhoto.intervalId !== currentPhoto.intervalId) {
+        console.log(`Fotoğraf değişti: ${currentPhoto.intervalId} -> ${newPhoto.intervalId}`);
+        setCurrentPhoto(newPhoto);
+        onNewPhotoAvailable(true, newPhoto.intervalId);
+      }
+    }, 60000); // Her dakika kontrol et
+
+    return () => clearInterval(checkPhotoInterval);
+  }, [currentPhoto.intervalId, onNewPhotoAvailable]);
 
   return (
     <>
