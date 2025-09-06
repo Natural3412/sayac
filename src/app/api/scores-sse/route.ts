@@ -1,32 +1,19 @@
 // src/app/api/scores-sse/route.ts
-import { readGameState } from '@/utils/gameState';
-
-type GameState = {
-  okan: number;
-  sevilay: number;
-  usedPhotos: number[];
-  gameStarted: string;
-  gameEnded: boolean;
-  winner: string | null;
-};
-
-// Oyun verilerini JSON dosyasından oku
-let gameData = readGameState();
-
-const clients = new Set<ReadableStreamDefaultController>();
+import { addClient, removeClient, getCurrentGameData } from '@/utils/broadcast';
 
 export async function GET() {
   const stream = new ReadableStream({
     start(controller) {
       // Yeni istemciyi kaydet
-      clients.add(controller);
+      addClient(controller);
       
       // İlk verileri gönder
+      const gameData = getCurrentGameData();
       controller.enqueue(`data: ${JSON.stringify(gameData)}\n\n`);
       
       // Bağlantı kesildiğinde istemciyi kaldır
       const cleanup = () => {
-        clients.delete(controller);
+        removeClient(controller);
       };
       
       // Cleanup fonksiyonunu controller'a bağla
@@ -42,20 +29,3 @@ export async function GET() {
     },
   });
 }
-
-// Tüm istemcilere yeni verileri gönder
-export function broadcastUpdate(newData: GameState) {
-  gameData = newData;
-  const message = `data: ${JSON.stringify(gameData)}\n\n`;
-  
-  clients.forEach((controller) => {
-    try {
-      controller.enqueue(message);
-    } catch {
-      // Bağlantı kesilmişse istemciyi kaldır
-      clients.delete(controller);
-    }
-  });
-}
-
-export { gameData };

@@ -1,6 +1,6 @@
 // src/app/api/scores/route.ts
 import { NextResponse } from 'next/server';
-import { broadcastUpdate } from '../scores-sse/route';
+import { broadcastUpdate, updateGameData } from '@/utils/broadcast';
 import { readGameState, writeGameState } from '@/utils/gameState';
 
 export async function GET() {
@@ -26,6 +26,9 @@ export async function POST(request: Request) {
   
   // JSON dosyasına kaydet
   writeGameState(updatedData);
+  
+  // Broadcast utility'de game data'yı güncelle
+  updateGameData(updatedData);
   
   // Tüm bağlı istemcilere güncellemeyi gönder
   broadcastUpdate(updatedData);
