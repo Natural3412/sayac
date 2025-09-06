@@ -1,6 +1,14 @@
 // src/app/api/scores-sse/route.ts
-import { NextRequest } from 'next/server';
 import { readGameState } from '@/utils/gameState';
+
+type GameState = {
+  okan: number;
+  sevilay: number;
+  usedPhotos: number[];
+  gameStarted: string;
+  gameEnded: boolean;
+  winner: string | null;
+};
 
 // Oyun verilerini JSON dosyasından oku
 let gameData = readGameState();
@@ -22,7 +30,7 @@ export async function GET() {
       };
       
       // Cleanup fonksiyonunu controller'a bağla
-      (controller as any).cleanup = cleanup;
+      (controller as unknown as { cleanup: () => void }).cleanup = cleanup;
     },
   });
 
@@ -36,14 +44,14 @@ export async function GET() {
 }
 
 // Tüm istemcilere yeni verileri gönder
-export function broadcastUpdate(newData: any) {
+export function broadcastUpdate(newData: GameState) {
   gameData = newData;
   const message = `data: ${JSON.stringify(gameData)}\n\n`;
   
   clients.forEach((controller) => {
     try {
       controller.enqueue(message);
-    } catch (error) {
+    } catch {
       // Bağlantı kesilmişse istemciyi kaldır
       clients.delete(controller);
     }

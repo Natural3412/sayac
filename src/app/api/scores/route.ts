@@ -1,6 +1,6 @@
 // src/app/api/scores/route.ts
 import { NextResponse } from 'next/server';
-import { broadcastUpdate, gameData } from '../scores-sse/route';
+import { broadcastUpdate } from '../scores-sse/route';
 import { readGameState, writeGameState } from '@/utils/gameState';
 
 export async function GET() {

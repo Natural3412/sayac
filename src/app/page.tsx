@@ -372,6 +372,7 @@ function DailyPhoto({ date, onNewPhotoAvailable, isOpen, setIsOpen }: DailyPhoto
             </button>
 
             <div className="relative overflow-hidden rounded-2xl border-4 border-gradient-to-br from-pink-300/50 to-rose-300/50 shadow-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={currentPhoto.photoSrc}
                 alt="Bugünün Fotoğrafı"
